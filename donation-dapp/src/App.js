@@ -16,6 +16,7 @@ function App() {
     const [contract, setContract] = useState(null);
     const [balance, setBalance] = useState("0");
     const [donationAmount, setDonationAmount] = useState("");
+    const [ownerAddress, setOwnerAddress] = useState(""); // ✅ Added owner state
 
     useEffect(() => {
         if (window.ethereum) {
@@ -28,6 +29,22 @@ function App() {
                 }
             });
         }
+
+        async function fetchOwner() {
+            if (!window.ethereum) return;
+            const provider = new ethers.BrowserProvider(window.ethereum);
+            const signer = await provider.getSigner();
+            const contractInstance = new ethers.Contract(contractAddress, contractABI, signer);
+
+            try {
+                const owner = await contractInstance.owner();
+                setOwnerAddress(owner); // ✅ Set the contract owner
+            } catch (error) {
+                console.error("Error fetching owner:", error);
+            }
+        }
+
+        fetchOwner();
     }, []);
 
     async function connectWallet() {
@@ -36,7 +53,8 @@ function App() {
                 const provider = new ethers.BrowserProvider(window.ethereum);
                 await provider.send("eth_requestAccounts", []);
                 const signer = await provider.getSigner();
-                setWalletAddress(await signer.getAddress());
+                const userAddress = await signer.getAddress();
+                setWalletAddress(userAddress);
 
                 const contractInstance = new ethers.Contract(contractAddress, contractABI, signer);
                 setContract(contractInstance);
@@ -52,29 +70,33 @@ function App() {
     }
 
     async function getBalance(contractInstance = contract) {
-      if (!contractInstance) {
-          console.error("Contract not initialized");
-          return;
-      }
-  
-      try {
-          const balance = await contractInstance.getBalance();
-          setBalance(ethers.formatEther(balance));
-      } catch (error) {
-          console.error("Error fetching balance:", error);
-          alert("Failed to fetch balance. Make sure the contract is deployed and the address is correct.");
-      }
-  }
-  
+        if (!contractInstance) {
+            console.error("Contract not initialized");
+            return;
+        }
+
+        try {
+            const balance = await contractInstance.getBalance();
+            setBalance(ethers.formatEther(balance));
+        } catch (error) {
+            console.error("Error fetching balance:", error);
+            alert("Failed to fetch balance. Make sure the contract is deployed and the address is correct.");
+        }
+    }
 
     async function donate() {
         if (!contract) return alert("Connect wallet first!");
         if (!donationAmount) return alert("Enter donation amount!");
 
-        const tx = await contract.donate({ value: ethers.parseEther(donationAmount) });
-        await tx.wait();
-        alert("Donation successful!");
-        getBalance();
+        try {
+            const tx = await contract.donate({ value: ethers.parseEther(donationAmount) });
+            await tx.wait();
+            alert("Donation successful!");
+            getBalance();
+        } catch (error) {
+            console.error("Donation failed:", error);
+            alert("Transaction failed!");
+        }
     }
 
     async function withdraw() {
@@ -85,6 +107,7 @@ function App() {
             alert("Withdraw successful!");
             getBalance();
         } catch (error) {
+            console.error("Withdrawal failed:", error);
             alert("You are not the owner!");
         }
     }
@@ -128,12 +151,14 @@ function App() {
                 </button>
             </div>
 
-            <div className="card p-4 shadow-sm">
-                <h3>Owner Actions</h3>
-                <button className="btn btn-danger mt-2" onClick={withdraw}>
-                    Withdraw Funds
-                </button>
-            </div>
+            {walletAddress === ownerAddress && (
+                <div className="card p-4 shadow-sm">
+                    <h3>Owner Actions</h3>
+                    <button className="btn btn-danger mt-2" onClick={withdraw}>
+                        Withdraw Funds
+                    </button>
+                </div>
+            )}
         </div>
     );
 }
